@@ -5,358 +5,324 @@ import math
 import time
 import os
 import sys
-sys.path.append('D:\webots-R2021a\Webots\projects\robots\robotis\darwin-op\libraries\python37')
-from managers import RobotisOp2GaitManager
-from managers import RobotisOp2MotionManager
-from controller import Robot, Motor, PositionSensor, Gyro, Accelerometer, TouchSensor, LED
 
-# 创建Robot实例
-robot = Robot()
+# 添加Webots Python API路径
+current_path = os.path.dirname(os.path.abspath(__file__))
+webots_home = os.environ.get('WEBOTS_HOME', 'D:/webots-R2021a/Webots')
+darwin_op_lib = os.path.join(webots_home, 'projects/robots/robotis/darwin-op/libraries/python37')
+sys.path.append(darwin_op_lib)
 
-# 获取仿真的时间步长
-timestep = int(robot.getBasicTimeStep())
-print(f"仿真时间步长: {timestep}毫秒")
-
-# 初始化传感器和执行器字典
-motors = {}
-position_sensors = {}
-force_sensors = {}
-
-# 初始化IMU传感器
+# 尝试导入必要的模块
 try:
-    # 尝试使用正确的加速度计名称
-    accelerometer = robot.getDevice("Accelerometer")
-    if not accelerometer:
-        accelerometer = robot.getDevice("accelerometer")
-    accelerometer.enable(timestep)
-    print("加速度计已启用")
-except:
-    print("警告: 无法获取加速度计")
-    accelerometer = None
+    from controller import Robot, Motor, PositionSensor, Gyro, Accelerometer, TouchSensor, LED
+    print("成功导入controller模块")
+except ImportError as e:
+    print(f"无法导入controller模块: {e}")
+    print(f"当前Python路径: {sys.path}")
+    sys.exit(1)
 
+# 尝试导入RobotisOp2管理器
 try:
-    # 尝试使用正确的陀螺仪名称
-    gyro = robot.getDevice("Gyro")
-    if not gyro:
-        gyro = robot.getDevice("gyro")
-    gyro.enable(timestep)
-    print("陀螺仪已启用")
-except:
-    print("警告: 无法获取陀螺仪")
-    gyro = None
-
-# 初始化脚底触觉传感器
-try:
-    left_foot_sensor = robot.getDevice("leftFootTouchSensor")
-    left_foot_sensor.enable(timestep)
-    print("左脚触觉传感器已启用")
-except:
-    print("警告: 无法获取左脚触觉传感器")
-    left_foot_sensor = None
-
-try:
-    right_foot_sensor = robot.getDevice("rightFootTouchSensor")
-    right_foot_sensor.enable(timestep)
-    print("右脚触觉传感器已启用")
-except:
-    print("警告: 无法获取右脚触觉传感器")
-    right_foot_sensor = None
-
-# 根据提供的映射表定义电机名称
-motor_mapping = {
-    # 头部和颈部电机
-    "Head": 20,
-    "Neck": 19,
+    from managers import RobotisOp2GaitManager, RobotisOp2MotionManager
+    print("成功导入RobotisOp2管理器")
+except ImportError as e:
+    print(f"无法导入RobotisOp2管理器: {e}")
+    print("请确保Webots Darwin-OP库已正确安装")
+    print(f"尝试从以下路径导入: {darwin_op_lib}")
+    print(f"当前Python路径: {sys.path}")
     
-    # 手臂电机
-    "ShoulderR": 1,
-    "ShoulderL": 2,
-    "ArmUpperR": 3,
-    "ArmUpperL": 4,
-    "ArmLowerR": 5,
-    "ArmLowerL": 6,
+    # 如果无法导入管理器，创建模拟的类以便代码可以继续运行
+    class DummyManager:
+        def __init__(self, *args, **kwargs):
+            print("警告: 使用模拟的管理器")
+        
+        def __getattr__(self, name):
+            def dummy_method(*args, **kwargs):
+                print(f"调用模拟方法: {name}{args}")
+                return False
+            return dummy_method
     
-    # 腿部电机
-    "PelvYR": 7,
-    "PelvYL": 8,
-    "PelvR": 9,
-    "PelvL": 10,
-    "LegUpperR": 11,
-    "LegUpperL": 12,
-    "LegLowerR": 13,
-    "LegLowerL": 14,
-    "AnkleR": 15,
-    "AnkleL": 16,
-    "FootR": 17,
-    "FootL": 18
-}
+    RobotisOp2GaitManager = DummyManager
+    RobotisOp2MotionManager = DummyManager
 
-# 获取所有电机并启用位置传感器
-for name, motor_id in motor_mapping.items():
-    try:
-        # 获取电机
-        motor = robot.getDevice(name)
-        if motor:
-            motors[name] = motor
-            print(f"电机 {name} 已启用")
-            
-            # 获取位置传感器 (名称加上"S"后缀)
-            sensor_name = name + "S"
-            position_sensor = robot.getDevice(sensor_name)
-            if position_sensor:
-                position_sensor.enable(timestep)
-                position_sensors[name] = position_sensor
-                print(f"位置传感器 {sensor_name} 已启用")
-    except Exception as e:
-        print(f"警告: 无法获取电机或传感器 {name}: {e}")
-
-# 获取LED
-try:
-    eye_led = robot.getDevice("EyeLed")
-    print("眼部LED已获取")
-except:
-    print("警告: 无法获取眼部LED")
-    eye_led = None
-
-# 初始化步态管理器
-gait_manager = RobotisOp2GaitManager(robot, "")
-
-# 初始化动作管理器
-motion_manager = RobotisOp2MotionManager(robot)
-
-# 测试电机函数
-def test_motor(motor_name, target_position, max_torque=None, velocity=0.3):
-    """测试特定电机的参数"""
-    if motor_name not in motors:
-        print(f"错误: 找不到电机 {motor_name}")
-        return False
+class Op2TestController(Robot):
+    """OP2机器人测试控制器类"""
     
-    motor = motors[motor_name]
+    # 电机名称常量
+    MOTOR_NAMES = [
+        "ShoulderR", "ShoulderL", "ArmUpperR", "ArmUpperL", "ArmLowerR",
+        "ArmLowerL", "PelvYR", "PelvYL", "PelvR", "PelvL",
+        "LegUpperR", "LegUpperL", "LegLowerR", "LegLowerL", "AnkleR",
+        "AnkleL", "FootR", "FootL", "Neck", "Head"
+    ]
     
-    # 设置最大扭矩（如果提供）
-    if max_torque is not None:
+    def __init__(self):
+        """初始化控制器"""
+        super(Op2TestController, self).__init__()
+        
+        # 获取仿真的时间步长
+        self.time_step = int(self.getBasicTimeStep())
+        print(f"仿真时间步长: {self.time_step}毫秒")
+        
+        # 初始化传感器和执行器字典
+        self.motors = {}
+        self.position_sensors = {}
+        
+        # 初始化IMU传感器
+        self.accelerometer = self.getDevice("Accelerometer")
+        if not self.accelerometer:
+            self.accelerometer = self.getDevice("accelerometer")
+        if self.accelerometer:
+            self.accelerometer.enable(self.time_step)
+            print("加速度计已启用")
+        
+        self.gyro = self.getDevice("Gyro")
+        if not self.gyro:
+            self.gyro = self.getDevice("gyro")
+        if self.gyro:
+            self.gyro.enable(self.time_step)
+            print("陀螺仪已启用")
+        
+        # 初始化脚底触觉传感器
+        self.left_foot_sensor = self.getDevice("leftFootTouchSensor")
+        if self.left_foot_sensor:
+            self.left_foot_sensor.enable(self.time_step)
+            print("左脚触觉传感器已启用")
+        
+        self.right_foot_sensor = self.getDevice("rightFootTouchSensor")
+        if self.right_foot_sensor:
+            self.right_foot_sensor.enable(self.time_step)
+            print("右脚触觉传感器已启用")
+        
+        # 获取所有电机并启用位置传感器
+        for name in self.MOTOR_NAMES:
+            motor = self.getDevice(name)
+            if motor:
+                self.motors[name] = motor
+                print(f"电机 {name} 已启用")
+                
+                # 获取位置传感器 (名称加上"S"后缀)
+                sensor_name = name + "S"
+                position_sensor = self.getDevice(sensor_name)
+                if position_sensor:
+                    position_sensor.enable(self.time_step)
+                    self.position_sensors[name] = position_sensor
+                    print(f"位置传感器 {sensor_name} 已启用")
+        
+        # 获取LED
+        self.eye_led = self.getDevice("EyeLed")
+        if self.eye_led:
+            print("眼部LED已获取")
+            self.eye_led.set(0x00FF00)  # 设置为绿色
+        
+        # 初始化步态管理器和动作管理器
         try:
+            self.motion_manager = RobotisOp2MotionManager(self)
+            print("动作管理器初始化成功")
+        except Exception as e:
+            print(f"动作管理器初始化失败: {e}")
+            self.motion_manager = None
+        
+        try:
+            self.gait_manager = RobotisOp2GaitManager(self, "")
+            print("步态管理器初始化成功")
+        except Exception as e:
+            print(f"步态管理器初始化失败: {e}")
+            self.gait_manager = None
+    
+    def my_step(self):
+        """执行一步仿真，并检查是否应该退出"""
+        ret = self.step(self.time_step)
+        return ret != -1
+    
+    def wait(self, ms):
+        """等待指定的毫秒数"""
+        start_time = self.getTime()
+        s = ms / 1000.0
+        while s + start_time >= self.getTime():
+            if not self.my_step():
+                break
+    
+    def test_motor(self, motor_name, target_position, max_torque=None, velocity=0.3):
+        """测试特定电机的参数"""
+        if motor_name not in self.motors:
+            print(f"错误: 找不到电机 {motor_name}")
+            return False
+        
+        motor = self.motors[motor_name]
+        
+        # 设置最大扭矩（如果提供）
+        if max_torque is not None:
             motor.setAvailableTorque(max_torque)
             print(f"设置 {motor_name} 最大扭矩为 {max_torque} N·m")
-        except:
-            print(f"警告: 无法设置 {motor_name} 的扭矩")
-    
-    # 设置速度（如果提供）
-    if velocity is not None:
-        try:
+        
+        # 设置速度（如果提供）
+        if velocity is not None:
             motor.setVelocity(velocity)
             print(f"设置 {motor_name} 速度为 {velocity} rad/s")
-        except:
-            print(f"警告: 无法设置 {motor_name} 的速度")
-    
-    # 设置目标位置
-    try:
+        
+        # 设置目标位置
         motor.setPosition(target_position)
         print(f"设置 {motor_name} 目标位置为 {target_position} rad")
-    except:
-        print(f"警告: 无法设置 {motor_name} 的位置")
+        
+        return True
     
-    return True
-
-# 使用步态管理器走路
-def walk_with_gait_manager(steps=10):
-    """使用步态管理器让机器人走几步"""
-    if not gait_manager:
-        print("警告: 步态管理器不可用")
-        return False
-    
-    try:
+    def walk_with_gait_manager(self, duration_seconds=5):
+        """使用步态管理器让机器人行走指定的时间（秒）"""
+        if not self.gait_manager:
+            print("警告: 步态管理器不可用")
+            return False
+        
         print("使用步态管理器行走...")
         
         # 设置步态参数
-        gait_manager.setXAmplitude(0.1)  # X方向幅度
-        gait_manager.setYAmplitude(0.0)  # Y方向幅度（左右）
-        gait_manager.setAAmplitude(0.0)  # 角度幅度（转向）
-        gait_manager.setBalanceEnabled(True)  # 启用平衡
+        self.gait_manager.setXAmplitude(0.4)  # X方向幅度
+        self.gait_manager.setYAmplitude(0.0)  # Y方向幅度（左右）
+        self.gait_manager.setAAmplitude(0.0)  # 角度幅度（转向）
+        self.gait_manager.setBalanceEnable(True)  # 启用平衡
         
         # 开始行走
-        print("开始行走...")
+        print(f"开始行走，计划行走 {duration_seconds} 秒...")
+        self.gait_manager.start()  # 启动步态算法
         
-        # 执行指定步数
-        for i in range(steps):
-            if robot.step(timestep) == -1:
+        # 记录开始时间
+        start_time = self.getTime()
+        elapsed = 0
+        
+        # 按时间行走
+        while elapsed < duration_seconds:
+            if not self.my_step():
                 break
             
-            # 每一步都调用步态管理器的步进函数
-            gait_manager.step(timestep)
+            # 调用步态管理器的step函数，传入时间步长
+            self.gait_manager.step(self.time_step)
             
-            # 每5步打印一次状态
-            if i % 5 == 0:
-                print(f"行走中... 步数: {i+1}/{steps}")
+            # 计算已经行走的时间
+            current_time = self.getTime()
+            elapsed = current_time - start_time
+            
+            # 每秒打印一次状态
+            if int(elapsed) > int(elapsed - self.time_step/1000):
+                print(f"行走中... 已行走 {elapsed:.2f} 秒 / {duration_seconds} 秒")
         
         # 停止行走
-        gait_manager.setXAmplitude(0.0)
-        gait_manager.setYAmplitude(0.0)
-        gait_manager.setAAmplitude(0.0)
+        print("停止行走...")
+        self.gait_manager.stop()  # 停止步态算法
         
-        # 再执行几步让机器人停下来
-        for i in range(5):
-            if robot.step(timestep) == -1:
-                break
-            gait_manager.step(timestep)
+        # 重置步态参数
+        self.gait_manager.setXAmplitude(0.0)
+        self.gait_manager.setYAmplitude(0.0)
+        self.gait_manager.setAAmplitude(0.0)
         
         print("行走完成")
         return True
-    except Exception as e:
-        print(f"警告: 使用步态管理器时出错: {e}")
-        return False
-
-# 使用动作管理器播放动作
-def play_motion(motion_name):
-    """使用动作管理器播放预定义的动作"""
-    if not motion_manager:
-        print(f"警告: 动作管理器不可用，无法播放动作 {motion_name}")
-        return False
     
-    try:
-        print(f"播放动作: {motion_name}")
+    def play_motion(self, motion_id):
+        """使用动作管理器播放预定义的动作"""
+        if not self.motion_manager:
+            print(f"警告: 动作管理器不可用，无法播放动作 {motion_id}")
+            return False
+        
+        print(f"播放动作: {motion_id}")
         
         # 播放动作
-        motion_manager.playPage(motion_name)
+        self.motion_manager.playPage(motion_id)
         
-        # 等待动作完成
-        while not motion_manager.isMotionDone():
-            if robot.step(timestep) == -1:
+        # 等待动作完成（isMotionPlaying返回true表示动作正在播放，所以等待它变为false）
+        while self.motion_manager.isMotionPlaying():
+            if not self.my_step():
                 break
         
-        print(f"动作 {motion_name} 已完成")
+        print(f"动作 {motion_id} 已完成")
         return True
-    except Exception as e:
-        print(f"警告: 播放动作时出错: {e}")
-        return False
-
-# 打印传感器数据
-def print_sensor_data():
-    """打印所有传感器的数据"""
-    # 打印IMU数据
-    if accelerometer:
-        try:
-            acc_values = accelerometer.getValues()
+    
+    def print_sensor_data(self):
+        """打印所有传感器的数据"""
+        if self.accelerometer:
+            acc_values = self.accelerometer.getValues()
             print(f"加速度计: X={acc_values[0]:.4f}, Y={acc_values[1]:.4f}, Z={acc_values[2]:.4f} m/s²")
-        except:
-            print("警告: 无法读取加速度计数据")
-    
-    if gyro:
-        try:
-            gyro_values = gyro.getValues()
+        
+        if self.gyro:
+            gyro_values = self.gyro.getValues()
             print(f"陀螺仪: X={gyro_values[0]:.4f}, Y={gyro_values[1]:.4f}, Z={gyro_values[2]:.4f} rad/s")
-        except:
-            print("警告: 无法读取陀螺仪数据")
-    
-    # 打印触觉传感器数据
-    if left_foot_sensor:
-        try:
-            left_contact = left_foot_sensor.getValue()
+        
+        if self.left_foot_sensor:
+            left_contact = self.left_foot_sensor.getValue()
             print(f"左脚触觉传感器: {left_contact}")
-        except:
-            print("警告: 无法读取左脚触觉传感器数据")
-    
-    if right_foot_sensor:
-        try:
-            right_contact = right_foot_sensor.getValue()
+        
+        if self.right_foot_sensor:
+            right_contact = self.right_foot_sensor.getValue()
             print(f"右脚触觉传感器: {right_contact}")
-        except:
-            print("警告: 无法读取右脚触觉传感器数据")
-    
-    # 打印电机位置传感器数据
-    for name, sensor in position_sensors.items():
-        try:
+        
+        for name, sensor in self.position_sensors.items():
             position = sensor.getValue()
             print(f"电机 {name} 位置: {position:.4f} rad")
-        except:
-            pass
-
-# 主循环
-print("开始测试OP2机器人传感器和舵机...")
-
-test_phase = 0
-test_start_time = robot.getTime()
-
-while robot.step(timestep) != -1:
-    current_time = robot.getTime()
-    elapsed_time = current_time - test_start_time
     
-    # 每5秒打印一次传感器数据
-    if elapsed_time % 5 < 0.1:
-        print(f"\n===== 时间: {current_time:.2f}s =====")
-        print_sensor_data()
-    
-    # 根据不同阶段测试不同的功能
-    if test_phase == 0 and elapsed_time > 2:
-        # 测试头部电机
-        if "Head" in motors and "Neck" in motors:
-            test_motor("Head", 0.3, velocity=0.5)
-            test_motor("Neck", 0.2, velocity=0.5)
-            test_phase = 1
-            print("\n开始测试头部电机...")
-        else:
-            test_phase = 1
-            print("\n跳过头部电机测试（未找到电机）...")
-    
-    elif test_phase == 1 and elapsed_time > 7:
-        # 测试手臂电机
-        if "ShoulderL" in motors and "ArmUpperL" in motors:
-            test_motor("ShoulderL", 0.5, velocity=0.5)
-            test_motor("ArmUpperL", 0.2, velocity=0.5)
-            test_phase = 2
-            print("\n开始测试手臂电机...")
-        else:
-            test_phase = 2
-            print("\n跳过手臂电机测试（未找到电机）...")
-    
-    elif test_phase == 2 and elapsed_time > 12:
-        # 尝试使用步态管理器走几步
-        print("\n尝试使用步态管理器走几步...")
-        if gait_manager and walk_with_gait_manager(steps=20):
-            print("成功使用步态管理器行走")
-        else:
-            print("无法使用步态管理器，尝试手动控制腿部电机...")
-            # 简单的腿部动作
-            if "LegUpperR" in motors and "LegUpperL" in motors:
-                test_motor("LegUpperR", 0.1, velocity=0.3)
-                test_motor("LegUpperL", 0.1, velocity=0.3)
+    def run(self):
+        """主运行函数"""
+        print("开始测试OP2机器人传感器和舵机...")
         
-        test_phase = 3
-    
-    elif test_phase == 3 and elapsed_time > 20:
-        # 测试脚底触觉传感器 - 通过让机器人抬起一只脚
+        # 第一步更新传感器值
+        self.my_step()
+        
+        # 设置眼部LED为绿色
+        if self.eye_led:
+            self.eye_led.set(0x00FF00)
+        
+        # 初始化机器人姿势
+        print("\n让机器人先站起来...")
+        self.play_motion(1)  # ini动作，移动到站立位置
+        self.wait(500)  # 等待500毫秒
+        
+        # 测试头部电机
+        print("\n测试头部电机...")
+        if "Head" in self.motors and "Neck" in self.motors:
+            self.test_motor("Head", 0.3, velocity=0.5)
+            self.test_motor("Neck", 0.2, velocity=0.5)
+            self.wait(2000)  # 等待2秒
+        
+        # 测试手臂电机
+        print("\n测试手臂电机...")
+        if "ShoulderL" in self.motors and "ArmUpperL" in self.motors:
+            self.test_motor("ShoulderL", 0.5, velocity=0.5)
+            self.test_motor("ArmUpperL", 0.2, velocity=0.5)
+            self.wait(2000)  # 等待2秒
+        
+        # 准备行走
+        print("\n准备行走...")
+        self.play_motion(9)  # walkready动作，准备行走
+        self.wait(1000)  # 等待1秒
+        
+        # 使用步态管理器行走
+        print("\n开始行走测试...")
+        self.walk_with_gait_manager(duration_seconds=10)  # 行走10秒
+        
+        # 测试脚底触觉传感器
         print("\n测试脚底触觉传感器...")
+        self.play_motion(1)  # 回到初始姿势
+        self.wait(500)
         
         # 尝试播放抬腿动作
-        if motion_manager and play_motion(1):  # 尝试播放ID为1的动作
-            print("成功播放预定义动作")
-        else:
-            # 如果没有预定义动作，手动抬腿
-            if "LegUpperL" in motors and "LegLowerL" in motors and "AnkleL" in motors:
-                print("手动抬起左腿...")
-                test_motor("LegUpperL", 0.5, velocity=0.3)
-                test_motor("LegLowerL", -0.3, velocity=0.3)
-                test_motor("AnkleL", -0.2, velocity=0.3)
+        print("\n尝试抬腿动作...")
+        if self.play_motion(15):  # 尝试播放坐下动作
+            print("成功播放坐下动作")
+            self.wait(1000)
+            self.play_motion(16)  # 站起来
+            self.wait(1000)
         
-        test_phase = 4
-    
-    elif test_phase == 4 and elapsed_time > 25:
         # 恢复初始姿势
         print("\n恢复初始姿势...")
+        self.play_motion(1)  # 回到初始姿势
         
-        # 尝试播放初始姿势动作
-        if motion_manager and play_motion(0):  # 尝试播放ID为0的动作（通常是初始姿势）
-            print("成功恢复初始姿势")
-        else:
-            # 如果没有预定义动作，手动恢复
-            for name in motors:
-                test_motor(name, 0.0, velocity=0.3)
-        
-        test_phase = 5
-    
-    elif test_phase == 5 and elapsed_time > 30:
-        # 测试完成
         print("\n测试完成！")
-        break
 
-print("控制器已退出")
+# 主程序
+if __name__ == "__main__":
+    try:
+        print("正在初始化OP2测试控制器...")
+        controller = Op2TestController()
+        controller.run()
+    except Exception as e:
+        import traceback
+        print(f"运行控制器时出错: {e}")
+        traceback.print_exc()
