@@ -33,7 +33,7 @@ class Op2TestController(Robot):
         self.time_step = int(self.getBasicTimeStep())
         print(f"仿真时间步长: {self.time_step}毫秒")
         
-        # 初始化传感器和执行器字典
+        # 初始化电机字典
         self.motors = {}
         self.position_sensors = {}
         
@@ -46,14 +46,14 @@ class Op2TestController(Robot):
         self.gyro.enable(self.time_step)
         print("陀螺仪已启用")
         
-        # 初始化脚底触觉传感器
+        # 初始化脚底压力传感器
         self.left_foot_sensor = self.getDevice("leftFootTouchSensor")
         self.left_foot_sensor.enable(self.time_step)
-        print("左脚触觉传感器已启用")
+        print("左脚压力传感器已启用")
         
         self.right_foot_sensor = self.getDevice("rightFootTouchSensor")
         self.right_foot_sensor.enable(self.time_step)
-        print("右脚触觉传感器已启用")
+        print("右脚压力传感器已启用")
         
         # 获取所有电机并启用位置传感器
         for name in self.MOTOR_NAMES:
@@ -159,11 +159,7 @@ class Op2TestController(Robot):
             # 计算已经行走的时间
             current_time = self.getTime()
             elapsed = current_time - start_time
-            
-            # 每秒打印一次状态
-            if int(elapsed) > int(elapsed - self.time_step/1000):
-                print(f"行走中... 已行走 {elapsed:.2f} 秒 / {duration_seconds} 秒")
-        
+
         # 停止行走
         print("停止行走...")
         self.gait_manager.stop()  # 停止步态算法
@@ -193,14 +189,10 @@ class Op2TestController(Robot):
     
     def run(self):
         """主运行函数"""
-        print("开始测试OP2机器人传感器和舵机...")
-        
+        print("开始测试OP2机器人传感器和舵机...")    
         # 第一步更新传感器值
         self.my_step()
-        
-        # 设置眼部LED为绿色
-        self.eye_led.set(0x00FF00)
-        
+
         # 初始化机器人姿势
         print("\n让机器人先站起来...")
         self.play_motion(1)  # ini动作，移动到站立位置
@@ -209,26 +201,10 @@ class Op2TestController(Robot):
         # 获取校准后的传感器值
         acc_values = self.get_calibrated_accelerometer()
         gyro_values = self.get_calibrated_gyro()
-        
-        # 打印原始值和校准后的值
-        raw_acc = self.accelerometer.getValues()
-        raw_gyro = self.gyro.getValues()
-        print("原始传感器值:")
-        print(f"加速度计原始值: X={raw_acc[0]:.4f}, Y={raw_acc[1]:.4f}, Z={raw_acc[2]:.4f}")
-        print(f"陀螺仪原始值: X={raw_gyro[0]:.4f}, Y={raw_gyro[1]:.4f}, Z={raw_gyro[2]:.4f}")
-        
         print("\n校准后的传感器值:")
         print(f"加速度计: X={acc_values[0]:.4f}, Y={acc_values[1]:.4f}, Z={acc_values[2]:.4f} m/s²")
         print(f"陀螺仪: X={gyro_values[0]:.4f}, Y={gyro_values[1]:.4f}, Z={gyro_values[2]:.4f} rad/s")
-        
-        # 检查加速度计值是否合理
-        acc_magnitude = math.sqrt(acc_values[0]**2 + acc_values[1]**2 + acc_values[2]**2)
-        print(f"加速度大小: {acc_magnitude:.4f} m/s² (静止时应接近9.8)")
-        
-        # 检查陀螺仪值是否合理
-        gyro_magnitude = math.sqrt(gyro_values[0]**2 + gyro_values[1]**2 + gyro_values[2]**2)
-        print(f"角速度大小: {gyro_magnitude:.4f} rad/s (静止时应接近0)")
-        
+ 
         #右脚我没boundingObject
         left_contact = self.left_foot_sensor.getValue()
         right_contact = self.right_foot_sensor.getValue()
@@ -252,7 +228,7 @@ class Op2TestController(Robot):
         self.play_motion(9)  # walkready动作，准备行走
         self.wait(1000)  # 等待1秒
         print("\n开始行走测试...")
-        self.walk_with_gait_manager(duration_seconds=10)  # 行走10秒
+        self.walk_with_gait_manager(duration_seconds=5)  # 行走5秒
  
         # 尝试播放坐下动作
         print("\n尝试坐下动作...")
@@ -263,7 +239,6 @@ class Op2TestController(Robot):
         
         # 测试位置传感器
         print("\n测试位置传感器...")
-
         for name, sensor in self.position_sensors.items():
             position = sensor.getValue()
             print(f"电机 {name} 位置: {position:.4f} rad")
