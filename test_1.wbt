@@ -1,0 +1,39 @@
+#VRML_SIM R2021a utf8
+WorldInfo {
+  coordinateSystem "NUE"
+}
+Viewpoint {
+  orientation 0.001631340770358946 0.9999830110086952 0.005596107689693301 2.5543318289877415
+  position 0.4285666388832152 -0.08317165582003216 -0.1645441282014612
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  translation 0 -0.32 0
+  floorSize 2 2
+}
+RobotisOp2 {
+  translation 0.1005857811748367 -0.08650138483867366 0.13016958175691964
+  rotation 0.9981722453159679 0.03176695077411477 -0.05141040283244567 0.12805815630493922
+  controller "op2_test_controller"
+  controllerArgs [
+    ""
+  ]
+  leftFootSlot [
+    TouchSensor {
+      translation 0.01 -0.03 0
+      name "leftFootTouchSensor"
+      boundingObject Box {
+        size 0.07 0.01 0.07
+      }
+    }
+  ]
+  rightFootSlot [
+    TouchSensor {
+      translation 0 0 -0.01
+      name "rightFootTouchSensor"
+    }
+  ]
+}
