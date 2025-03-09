@@ -196,7 +196,7 @@ brake = motor.getBrake()
 position_sensor = motor.getPositionSensor()
 ```
 
-* **multiplier的具体作用在文档中没有详细说明**
+* **multiplier**
 
 ```
 multiplier = motor.getMultiplier()

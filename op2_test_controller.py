@@ -134,7 +134,7 @@ class Op2TestController(Robot):
         """使用步态管理器让机器人行走指定的时间（秒）"""
         print("使用步态管理器行走...")
         
-        # 设置步态参数
+        # 设置步态参数（可能是因为左脚设置了一个boundingObject，右脚没有，会走歪...）
         self.gait_manager.setXAmplitude(1.0)  # X方向幅度
         self.gait_manager.setYAmplitude(0.0)  # Y方向幅度（左右）
         self.gait_manager.setAAmplitude(0.0)  # 角度幅度（转向）
